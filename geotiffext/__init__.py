@@ -1,6 +1,8 @@
 import logging as log
 import glob
+import numbers
 
+import numpy as np
 from osgeo import gdal, ogr
 
 
@@ -24,6 +26,9 @@ def gextract(tif_path: str, data_folder: str):
 
     for geo_json_path in glob.glob(data_folder + "/*.geo.json"):
         feature_raster = raster_from_geojson(geo_json_path, xdim, ydim)
+        feature_band = feature_raster.GetRasterBand(1)  # type: gdal.Band
+        val = compute_value(data, feature_band.ReadAsArray(), minval=0)
+        print(val)
 
 
 def raster_from_geojson(geojson_path: str, xdim: int, ydim: int) -> gdal.Dataset:
@@ -49,6 +54,42 @@ def raster_from_geojson(geojson_path: str, xdim: int, ydim: int) -> gdal.Dataset
     band.SetNoDataValue(0)
     gdal.RasterizeLayer(raster, [1], layer)
     return raster
+
+
+def compute_value(data_raster: np.ndarray, feature_raster: np.ndarray,
+                  minval=None, maxval=None) -> float:
+    # define the overlapping matrix
+    xdim_d, ydim_d = data_raster.shape
+    xdim_f, ydim_f = feature_raster.shape
+    if xdim_d != xdim_f or ydim_d != ydim_f:
+        log.warning("the matrices have different dimensions: %i*%i vs %i*%i",
+                    xdim_d, ydim_d, xdim_f, ydim_f)
+    xdim = min(xdim_d, xdim_f)
+    ydim = min(ydim_d, ydim_f)
+
+    total = 0.0
+    pixels = 0
+    for x in range(0, xdim):
+        for y in range(0, ydim):
+            if feature_raster[x, y] == 0:
+                continue
+            val = data_raster[x, y]
+            if not isinstance(val, numbers.Number):
+                continue
+            if minval is not None and val < minval:
+                continue
+            if maxval is not None and val > maxval:
+                continue
+            total += val
+            pixels += 1
+
+    if pixels == 0:
+        log.warning("found no pixels with values")
+        return 0
+
+    result = total / pixels
+    log.info("calculated an average value of %f from %i pixels", result, pixels)
+    return result
 
 
 def extract(tif_path: str):
