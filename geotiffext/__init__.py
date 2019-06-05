@@ -12,37 +12,43 @@ def gextract(tif_path: str, data_folder: str):
     """
     jdriver = ogr.GetDriverByName("GeoJSON")  # type: ogr.Driver
     tdriver = ogr.GetDriverByName("GTiff")  # type: ogr.Driver
-    data = array_from_tif(tif_path)
+
+    log.info("read raster data from %s", tif_path)
+    data_raster = gdal.Open(tif_path)  # type: gdal.Dataset
+    data_band = data_raster.GetRasterBand(1)  # type: gdal.Band
+    data = data_band.ReadAsArray()
 
     # rows are the y-dimension: 90 <-> -90,
     # columns the x-dimension: -180 <-> 180
     ydim, xdim = data.shape
 
     for geo_json_path in glob.glob(data_folder + "/*.geo.json"):
-        layer = jdriver.Open(geo_json_path).GetLayer()
-
-        # create a raster for the layer of the same size like
-        # the data raster
-        raster = tdriver.Create(geo_json_path + ".tif", data.shape[1],
-                                xdim, ydim, gdal.GDT_Byte)
-
-        # describe the mapping of the polygon to the raster
-        # https://gis.stackexchange.com/a/165966
-        raster.SetGeoTransform((-180, 360/xdim, 0, 90, 0, -180/ydim))
-
-        # finally, rasterize the layer
-        band = raster.GetRasterBand(1)
-        band.SetNoDataValue(0)
-        gdal.RasterizeLayer(raster, [1], layer)
+        feature_raster = raster_from_geojson(geo_json_path, xdim, ydim)
 
 
-def array_from_tif(tif_path: str):
-    log.info("read array data from %s", tif_path)
-    data = gdal.Open(tif_path)  # type: gdal.Dataset
-    band = data.GetRasterBand(1)  # type: gdal.Band
-    array = band.ReadAsArray()
-    log.info("extracted an %i*%i array", array.shape[0], array.shape[1])
-    return array
+def raster_from_geojson(geojson_path: str, xdim: int, ydim: int) -> gdal.Dataset:
+    log.info("rasterize GeoJSON file %s", geojson_path)
+
+    # read the JSON layer
+    jdriver = ogr.GetDriverByName("GeoJSON")  # type: ogr.Driver
+    data = jdriver.Open(geojson_path)  # type: ogr.DataSource
+    layer = data.GetLayer()  # type: ogr.Layer
+    log.info("found layer with %i features", layer.GetFeatureCount())
+
+    # create the raster
+    tdriver = gdal.GetDriverByName("GTiff")
+    raster = tdriver.Create(geojson_path + ".tif",
+                            xdim, ydim, gdal.GDT_Byte)
+
+    # describe the mapping of the polygon to the raster
+    # https://gis.stackexchange.com/a/165966
+    raster.SetGeoTransform((-180, 360 / xdim, 0, 90, 0, -180 / ydim))
+
+    # finally, rasterize the layer
+    band = raster.GetRasterBand(1)
+    band.SetNoDataValue(0)
+    gdal.RasterizeLayer(raster, [1], layer)
+    return raster
 
 
 def extract(tif_path: str):
