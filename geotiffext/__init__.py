@@ -8,7 +8,7 @@ import numpy as np
 from osgeo import gdal, ogr
 
 
-def doit(tif_path: str, data_folder: str):
+def doit(tif_path: str, data_folder: str, minval=None, maxval=None):
     """
     We assume that all data use WGS 84 (= WGS 1984, = EPSG:4326) as reference
     coordinate system (which is the standard system for GeoJSON
@@ -29,7 +29,8 @@ def doit(tif_path: str, data_folder: str):
         log.info("next location %s", code)
         feature_raster = _map_geojson(geo_json_path, xdim, ydim)
         feature_band = feature_raster.GetRasterBand(1)  # type: gdal.Band
-        val = _compute_value(data, feature_band.ReadAsArray(), minval=0)
+        val = _compute_value(data, feature_band.ReadAsArray(),
+                             minval=minval, maxval=maxval)
         results.append((code, val))
 
     csv_path = data_folder + "/geotiffext_" + os.path.basename(tif_path) + ".csv"
@@ -107,4 +108,4 @@ if __name__ == "__main__":
     # extract("../data/Cropland2000_5m.tif")
     # rasterize()
 
-    doit("../data/Cropland2000_5m.tif", "../data")
+    doit("../data/Cropland2000_5m.tif", "../data", minval=0)
