@@ -101,11 +101,3 @@ def _compute_value(data_raster: np.ndarray, feature_raster: np.ndarray,
     log.info("calculated an average value of %f from %i pixels", result, pixels)
     return result
 
-
-if __name__ == "__main__":
-    log.basicConfig(level=log.INFO)
-
-    # extract("../data/Cropland2000_5m.tif")
-    # rasterize()
-
-    doit("../data/Cropland2000_5m.tif", "../data", minval=0)

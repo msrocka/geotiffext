@@ -7,8 +7,8 @@ extension) as input and produces a CSV file that contains the average data
 for the respective regions.
 
 Each GeoJSON file is handled as a single region. The feature layer of this
-region is then mapped to a raster (producing a GeoTIFF file next to the
-GeoJSON file; using the [GDAL API](https://gdal.org/python/)) and the
+region is mapped to a raster (producing a GeoTIFF file next to the
+GeoJSON file (using the [GDAL API](https://gdal.org/python/))) and the
 intersecting data are averaged. The file name (without the `*.geo.json`
 extension) is used as location name in the resulting CSV file.
 
