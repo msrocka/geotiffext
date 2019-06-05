@@ -1,20 +1,19 @@
-import logging as log
+import csv
 import glob
+import logging as log
 import numbers
+import os
 
 import numpy as np
 from osgeo import gdal, ogr
 
 
-def gextract(tif_path: str, data_folder: str):
+def doit(tif_path: str, data_folder: str):
     """
     We assume that all data use WGS 84 (= WGS 1984, = EPSG:4326) as reference
     coordinate system (which is the standard system for GeoJSON
     https://tools.ietf.org/html/rfc7946).
     """
-    jdriver = ogr.GetDriverByName("GeoJSON")  # type: ogr.Driver
-    tdriver = ogr.GetDriverByName("GTiff")  # type: ogr.Driver
-
     log.info("read raster data from %s", tif_path)
     data_raster = gdal.Open(tif_path)  # type: gdal.Dataset
     data_band = data_raster.GetRasterBand(1)  # type: gdal.Band
@@ -24,14 +23,24 @@ def gextract(tif_path: str, data_folder: str):
     # columns the x-dimension: -180 <-> 180
     ydim, xdim = data.shape
 
+    results = []
     for geo_json_path in glob.glob(data_folder + "/*.geo.json"):
-        feature_raster = raster_from_geojson(geo_json_path, xdim, ydim)
+        code = os.path.basename(geo_json_path)[:-9]
+        log.info("next location %s", code)
+        feature_raster = _map_geojson(geo_json_path, xdim, ydim)
         feature_band = feature_raster.GetRasterBand(1)  # type: gdal.Band
-        val = compute_value(data, feature_band.ReadAsArray(), minval=0)
-        print(val)
+        val = _compute_value(data, feature_band.ReadAsArray(), minval=0)
+        results.append((code, val))
+
+    csv_path = data_folder + "/geotiffext_" + os.path.basename(tif_path) + ".csv"
+    log.info("write extracted results to %s", csv_path)
+    with open(csv_path, "w", encoding="utf-8", newline="\n") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Location", "Value"])
+        writer.writerows(results)
 
 
-def raster_from_geojson(geojson_path: str, xdim: int, ydim: int) -> gdal.Dataset:
+def _map_geojson(geojson_path: str, xdim: int, ydim: int) -> gdal.Dataset:
     log.info("rasterize GeoJSON file %s", geojson_path)
 
     # read the JSON layer
@@ -56,8 +65,8 @@ def raster_from_geojson(geojson_path: str, xdim: int, ydim: int) -> gdal.Dataset
     return raster
 
 
-def compute_value(data_raster: np.ndarray, feature_raster: np.ndarray,
-                  minval=None, maxval=None) -> float:
+def _compute_value(data_raster: np.ndarray, feature_raster: np.ndarray,
+                   minval=None, maxval=None) -> float:
     # define the overlapping matrix
     xdim_d, ydim_d = data_raster.shape
     xdim_f, ydim_f = feature_raster.shape
@@ -92,41 +101,10 @@ def compute_value(data_raster: np.ndarray, feature_raster: np.ndarray,
     return result
 
 
-def extract(tif_path: str):
-    data = gdal.Open(tif_path)  # type: gdal.Dataset
-    band = data.GetRasterBand(1)  # type: gdal.Band
-    print(band.GetMetadata())
-    print(band.GetNoDataValue())
-    print(band.GetMinimum(), " <= x <= ", band.GetMaximum())
-    array = band.ReadAsArray()
-    print(array.shape)
-
-
-def rasterize():
-    driver = ogr.GetDriverByName("GeoJSON")  # type: ogr.Driver
-    data = driver.Open("./data/countries.geo.json")  # type: ogr.DataSource
-    layer = data.GetLayer()  # type: ogr.Layer
-    print(" found", layer.GetFeatureCount(), "features")
-
-    tif_driver = gdal.GetDriverByName("GTiff")
-    for feature in layer:  # type: ogr.Feature
-        fid = feature.GetField("id")  # type: str
-        if not isinstance(fid, str) or len(fid) == 0 or not fid[0].isalnum():
-            continue
-        tif_ds = tif_driver.Create("./data/" + fid + ".tif",
-                                   4320, 2160, gdal.GDT_Byte)
-        tif_ds.SetGeoTransform((-180, 0.083333, 0, 90, 0, -0.083333))
-        print("  read feature ", feature.GetField("id"))
-        band = tif_ds.GetRasterBand(1)
-        band.SetNoDataValue(0)
-        gdal.RasterizeLayer(tif_ds, [1], layer)
-        break
-
-
 if __name__ == "__main__":
     log.basicConfig(level=log.INFO)
 
     # extract("../data/Cropland2000_5m.tif")
     # rasterize()
 
-    gextract("../data/Cropland2000_5m.tif", "../data")
+    doit("../data/Cropland2000_5m.tif", "../data")
